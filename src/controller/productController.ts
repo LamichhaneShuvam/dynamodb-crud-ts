@@ -7,19 +7,51 @@ const TABLENAME : any = process.env.TABLENAME;
 const insertNewProduct = async (req:Request, res:Response) => {
     const id = uuid.v4();
     const params = {
-        TableName : `${TABLENAME}`,
-        Item: {
-            'PK' : `PRODUCT#${id}`,
-            'SK' : `PRODUCT`,
-            'name' : `${req.body.name}`,
-            'description' : `${req.body.description}`,
-            'price' : `${req.body.price}`,
-            'color' : `${req.body.color}`,
-            'id' : `${id}`
-        }
+        TransactItems: [
+            {
+                Update: {
+                    TableName: TABLENAME,
+                    Key:{
+                        PK: `PRODUCT#${id}`,
+                        SK: `PRODUCT`
+                    },
+                    UpdateExpression: "set #color = :color, #price = :price, #name = :name, #description = :description, #id = :id",
+                    ExpressionAttributeNames:{
+                        "#color": "color",
+                        "#price": "price",
+                        "#name":"name",
+                        "#description": "description",
+                        "#id": "id",
+                    },
+                    ExpressionAttributeValues:{
+                        ':color' : `${req.body.color}`,
+                        ':price' : `${req.body.price}`,
+                        ':name' : `${req.body.name}`,
+                        ':description' : `${req.body.description}`,
+                        ':id' : `${id}`
+                    }
+                }
+            },
+            {
+                Update: {
+                    TableName: `${TABLENAME}`,
+                    Key:{
+                        PK: `STAT#PRODUCT`,
+                        SK: `STAT`
+                    },
+                    UpdateExpression:"set #count = #count + :p",
+                    ExpressionAttributeNames: {
+                        "#count" : "count"
+                    },
+                    ExpressionAttributeValues: {
+                        ':p' : 1
+                    }
+                }
+            }
+        ] as any
     };
     try{
-        const data = await dynamoDb.put(params).promise();
+        const data = await dynamoDb.transactWrite(params).promise();
         if(data)
             res.send("Product created successfully");    
     }catch (error) {
@@ -45,15 +77,36 @@ const getProductById = async (req:Request, res:Response) =>{
 
 const deleteProductById = async (req:Request ,res:Response) => {
     const params = {
-        TableName: `${TABLENAME}`,
-        Key:{
-            PK: `PRODUCT#${req.params.id}`,
-            SK: `PRODUCT`
-        },
-        ReturnValues: 'ALL_OLD'
+        TransactItems: [
+            {
+               Delete: {
+                    TableName: `${TABLENAME}`,
+                    Key:{
+                        PK: `PRODUCT#${req.params.id}`,
+                        SK: `PRODUCT`
+                    }
+                }
+            },
+            {
+                Update: {
+                    TableName: `${TABLENAME}`,
+                    Key:{
+                        PK: `STAT#PRODUCT`,
+                        SK: `STAT`
+                    },
+                    UpdateExpression:"set #count = #count - :p",
+                    ExpressionAttributeNames: {
+                        "#count" : "count"
+                    },
+                    ExpressionAttributeValues: {
+                        ':p' : 1
+                    }
+                }
+            }
+        ] as any
     };
     try {
-        const data = await dynamoDb.delete(params).promise();
+        const data = await dynamoDb.transactWrite(params).promise();
         res.send(data);    
     } catch (error) {
         console.log(error);

@@ -17,6 +17,7 @@ const getUserById = async (req:Request, res:Response) => {
         const  data = await dynamoDb.get(params).promise();
         res.send(data.Item);  
     } catch (error){
+        res.send(error);
         console.log(error);
     }
 }
@@ -24,19 +25,49 @@ const getUserById = async (req:Request, res:Response) => {
 const insertNewUser = async (req:Request, res:Response) => {
     const id = uuid.v4();
     const params = {
-        TableName : `${TABLENAME}`,
-        Item: {
-            'PK' : `USER#${id}`,
-            'SK' : `USER`,
-            'name' : `${req.body.name}`,
-            'email' : `${req.body.email}`,
-            'phone' : `${req.body.phone}`,
-            'id' : `${id}`
-        }
+        TransactItems:[
+            {
+                Update: {
+                    TableName: `${TABLENAME}`,
+                    Key:{
+                        PK: `USER#${id}`,
+                        SK: `USER`
+                    },
+                    UpdateExpression:"set #name = :name, #phone = :phone, #email = :email, #id = :id",
+                    ExpressionAttributeNames: {
+                        "#name" : "name",
+                        "#phone":"phone",
+                        "#email":"email",
+                        "#id": "id"
+                    },
+                    ExpressionAttributeValues: {
+                        ':name' : `${req.body.name}`,
+                        ':phone' : `${req.body.phone}`,
+                        ':email' : `${req.body.email}`,
+                        ':id' : `${id}`
+                    }
+                }
+            },
+            {
+                Update: {
+                    TableName: `${TABLENAME}`,
+                    Key:{
+                        PK: `STAT#USER`,
+                        SK: `STAT`
+                    },
+                    UpdateExpression:"set #count = #count + :p",
+                    ExpressionAttributeNames: {
+                        "#count" : "count"
+                    },
+                    ExpressionAttributeValues: {
+                        ':p' : 1
+                    }
+                }
+            }
+        ] as any
     };
-
     try{
-        const data = await dynamoDb.put(params).promise();
+        const data = await dynamoDb.transactWrite(params).promise();
         if(data)
             return {
                 'name' : `${req.body.name}`,
@@ -46,23 +77,46 @@ const insertNewUser = async (req:Request, res:Response) => {
                 'message' : 'New user successfully created.'
             };
     }catch (error) {
+        res.send(error);
         console.log(error);
     }
 }
 
 const deleteUserById = async (req: Request, res:Response) => {
     const params = {
-        TableName: `${TABLENAME}`,
-        Key:{
-            PK: `USER#${req.params.id}`,
-            SK: `USER`
-        },
-        ReturnValues: 'ALL_OLD'
+        TransactItems: [
+            {
+               Delete: {
+                    TableName: `${TABLENAME}`,
+                    Key:{
+                        PK: `USER#${req.params.id}`,
+                        SK: `USER`
+                    }
+                }
+            },
+            {
+                Update: {
+                    TableName: `${TABLENAME}`,
+                    Key:{
+                        PK: `STAT#USER`,
+                        SK: `STAT`
+                    },
+                    UpdateExpression:"set #count = #count - :p",
+                    ExpressionAttributeNames: {
+                        "#count" : "count"
+                    },
+                    ExpressionAttributeValues: {
+                        ':p' : 1
+                    }
+                }
+            }
+        ] as any
     };
     try {
-        const data = await dynamoDb.delete(params).promise();
+        const data = await dynamoDb.transactWrite(params).promise();
         res.send(data);  
     } catch (error) {
+        res.send(error);
         console.log(error);
     }
 }
@@ -87,6 +141,7 @@ const updateUser = async (req:Request, res:Response) => {
         const data = await dynamoDb.update(params).promise();
         res.send(data.Attributes);
     } catch (error) {
+        res.send(error);
         console.log(error);
     }
 }
